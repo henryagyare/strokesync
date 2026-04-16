@@ -1,1 +1,1 @@
-# stroke_care_system
+# Stroke SYNC
