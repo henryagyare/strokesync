@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "StrokeSync",
+    "slug": "strokesync-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "strokesync",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0a0e1a",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.strokesync.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0e1a"
+      },
+      "package": "com.strokesync.mobile"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

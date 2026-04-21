@@ -1,0 +1,34 @@
+{
+  "name": "strokesync",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@10.8.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:backend": "turbo run dev --filter=@strokesync/backend",
+    "dev:web": "turbo run dev --filter=@strokesync/web",
+    "dev:mobile": "turbo run dev --filter=@strokesync/mobile",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:generate": "turbo run db:generate --filter=@strokesync/backend",
+    "db:migrate": "turbo run db:migrate --filter=@strokesync/backend",
+    "db:seed": "turbo run db:seed --filter=@strokesync/backend",
+    "db:studio": "turbo run db:studio --filter=@strokesync/backend",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
