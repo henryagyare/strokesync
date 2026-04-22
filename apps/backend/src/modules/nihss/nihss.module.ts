@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
+import { NihssService } from './nihss.service';
+import { NihssController } from './nihss.controller';
+import { SocketModule } from '../socket/socket.module';
 
 @Module({
-  controllers: [],
-  providers: [],
-  exports: [],
+  imports: [SocketModule],
+  controllers: [NihssController],
+  providers: [NihssService],
+  exports: [NihssService],
 })
 export class NihssModule {}

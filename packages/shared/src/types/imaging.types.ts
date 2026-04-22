@@ -19,6 +19,36 @@ export enum ImagingStatus {
   CANCELLED = 'CANCELLED',
 }
 
+/**
+ * JSONB `details` field — DICOM metadata, measurements, scores.
+ * Stored as PostgreSQL JSONB, indexed with GIN.
+ */
+export interface ImagingStudyDetails {
+  // CT-specific
+  aspectsScore?: number;          // Alberta Stroke Program Early CT Score (0-10)
+  hemorrhage?: boolean;
+  midlineShift?: boolean;
+  midlineShiftMm?: number;
+  vesselOcclusion?: string;
+  edema?: string;
+  priorInfarcts?: boolean;
+  territory?: string;             // e.g. 'Left MCA', 'Right PCA'
+  earlyIschemicChanges?: boolean;
+
+  // Acquisition parameters
+  contrastUsed?: boolean;
+  contrastContraindicated?: boolean;
+  contrastAllergyNote?: string;
+  sliceThickness?: string;
+  radiationDose?: string;
+
+  // Posterior circulation
+  posteriorCirculation?: boolean;
+
+  // Open-ended
+  [key: string]: unknown;
+}
+
 export interface ImagingStudy {
   id: string;
   encounterId: string;
@@ -37,6 +67,10 @@ export interface ImagingStudy {
   reportedAt?: Date;
   isCritical: boolean;
   notes?: string;
+
+  // JSONB details
+  details?: ImagingStudyDetails;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +81,7 @@ export interface CreateImagingStudyDto {
   imagingType: ImagingType;
   studyDescription?: string;
   notes?: string;
+  details?: ImagingStudyDetails;
 }
 
 export interface UpdateImagingStudyDto {
@@ -61,4 +96,5 @@ export interface UpdateImagingStudyDto {
   reportedAt?: string;
   isCritical?: boolean;
   notes?: string;
+  details?: ImagingStudyDetails;
 }

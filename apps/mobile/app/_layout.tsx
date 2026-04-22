@@ -1,9 +1,10 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { IntakeProvider } from '../src/context/IntakeContext';
 
 export default function RootLayout() {
   return (
-    <>
+    <IntakeProvider>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -13,11 +14,9 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: '#0a0e1a' },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'StrokeSync' }} />
-        <Stack.Screen name="intake" options={{ title: 'Patient Intake' }} />
-        <Stack.Screen name="vitals" options={{ title: 'Vital Signs' }} />
-        <Stack.Screen name="nihss" options={{ title: 'NIHSS Assessment' }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="(wizard)" options={{ headerShown: false }} />
       </Stack>
-    </>
+    </IntakeProvider>
   );
 }

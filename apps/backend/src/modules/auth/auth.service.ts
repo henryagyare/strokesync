@@ -3,7 +3,6 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { UserRole } from '@strokesync/shared';
 
 interface LoginPayload {
   email: string;
@@ -15,7 +14,7 @@ interface RegisterPayload {
   password: string;
   firstName: string;
   lastName: string;
-  role: UserRole;
+  role: string;
   phoneNumber?: string;
   licenseNumber?: string;
   specialization?: string;
@@ -24,7 +23,7 @@ interface RegisterPayload {
 interface JwtPayload {
   sub: string;
   email: string;
-  role: UserRole;
+  role: string;
 }
 
 @Injectable()
@@ -51,7 +50,7 @@ export class AuthService {
         passwordHash,
         firstName: payload.firstName,
         lastName: payload.lastName,
-        role: payload.role,
+        role: payload.role as any,
         phoneNumber: payload.phoneNumber,
         licenseNumber: payload.licenseNumber,
         specialization: payload.specialization,

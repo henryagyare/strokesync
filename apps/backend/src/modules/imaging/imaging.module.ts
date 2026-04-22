@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
+import { ImagingService } from './imaging.service';
+import { ImagingController } from './imaging.controller';
+import { SocketModule } from '../socket/socket.module';
 
 @Module({
-  controllers: [],
-  providers: [],
-  exports: [],
+  imports: [SocketModule],
+  controllers: [ImagingController],
+  providers: [ImagingService],
+  exports: [ImagingService],
 })
 export class ImagingModule {}

@@ -25,7 +25,7 @@ class CreatePatientDto {
 @UseGuards(JwtAuthGuard)
 @Controller('patients')
 export class PatientsController {
-  constructor(private readonly patientsService: PatientsService) {}
+  constructor(private readonly patientsService: PatientsService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new patient' })

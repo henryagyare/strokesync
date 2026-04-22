@@ -8,10 +8,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "build": "echo 'Mobile build handled by EAS'",
-    "lint": "eslint src/",
+    "lint": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf .expo node_modules"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^3.0.2",
     "@strokesync/shared": "*",
     "expo": "~52.0.0",
     "expo-constants": "~17.0.0",

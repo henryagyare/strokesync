@@ -1,19 +1,31 @@
-// ─── StrokeSync Prisma Schema ──────────────────────────────
-// HIPAA-compliant Mobile Stroke Unit + Remote Neurologist System
-// Full ERD with column-level PHI protection markers
+// ═══════════════════════════════════════════════════════════════════════════════
+// StrokeSync — Production-Grade Prisma Schema
+// HIPAA-Compliant Mobile Stroke Unit + Remote Neurologist Consultation System
+//
+// Design principles:
+//   • PHI fields annotated with @db.Text (encrypted at application layer via pgcrypto)
+//   • JSONB `details` fields for flexible clinical data (vitals, labs, imaging, NIHSS)
+//   • Composite indexes for hot query paths
+//   • Immutable audit_logs table (append-only, no UPDATE/DELETE)
+//   • All tables @@map to snake_case for PostgreSQL conventions
+//   • Cascading deletes only where clinically safe (allergies, med history)
+//   • Soft-delete via status fields on core entities
+// ═══════════════════════════════════════════════════════════════════════════════
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, uuid_ossp(map: "uuid-ossp")]
 }
 
-// ═══════════════════════════════════════════════════════════
-// USER & AUTHENTICATION
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
 
 enum UserRole {
   TECHNICIAN
@@ -26,68 +38,6 @@ enum UserStatus {
   INACTIVE
   SUSPENDED
 }
-
-model User {
-  id              String     @id @default(uuid())
-  email           String     @unique  // PHI
-  passwordHash    String
-  firstName       String     // PHI
-  lastName        String     // PHI
-  role            UserRole
-  status          UserStatus @default(ACTIVE)
-  phoneNumber     String?    // PHI
-  licenseNumber   String?
-  specialization  String?
-  profileImageUrl String?
-  lastLoginAt     DateTime?
-
-  // Relations
-  technicianEncounters  Encounter[]      @relation("TechnicianEncounters")
-  neurologistEncounters Encounter[]      @relation("NeurologistEncounters")
-  consultations         Consultation[]   @relation("NeurologistConsultations")
-  technicianConsults    Consultation[]   @relation("TechnicianConsultations")
-  recordedVitals        VitalSign[]
-  orderedLabs           LabResult[]      @relation("OrderedLabs")
-  orderedImaging        ImagingStudy[]   @relation("OrderedImaging")
-  interpretedImaging    ImagingStudy[]   @relation("InterpretedImaging")
-  nihssAssessments      NIHSSAssessment[]
-  treatmentOrders       TreatmentOrder[] @relation("OrderedTreatments")
-  executedOrders        TreatmentOrder[] @relation("ExecutedTreatments")
-  sentMessages          Message[]
-  receivedAlerts        Alert[]          @relation("ReceivedAlerts")
-  sentAlerts            Alert[]          @relation("SentAlerts")
-  auditLogs             AuditLog[]
-  refreshTokens         RefreshToken[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([email])
-  @@index([role])
-  @@index([status])
-  @@map("users")
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  revokedAt DateTime?
-  ipAddress String?
-  userAgent String?
-
-  createdAt DateTime @default(now())
-
-  @@index([token])
-  @@index([userId])
-  @@map("refresh_tokens")
-}
-
-// ═══════════════════════════════════════════════════════════
-// PATIENT
-// ═══════════════════════════════════════════════════════════
 
 enum Gender {
   MALE
@@ -106,100 +56,6 @@ enum PatientStatus {
   DISCHARGED
 }
 
-model Patient {
-  id                    String        @id @default(uuid())
-  mrn                   String        @unique  // PHI — Medical Record Number
-  firstName             String        // PHI
-  lastName              String        // PHI
-  dateOfBirth           DateTime      // PHI
-  gender                Gender
-  age                   Int
-  phoneNumber           String?       // PHI
-  emergencyContactName  String?       // PHI
-  emergencyContactPhone String?       // PHI
-  address               String?       // PHI
-  insuranceProvider     String?       // PHI
-  insurancePolicyNumber String?       // PHI
-  status                PatientStatus @default(INTAKE)
-  chiefComplaint        String?
-  symptomOnsetTime      DateTime?
-  lastKnownWellTime     DateTime?
-
-  // Relations
-  encounters      Encounter[]
-  medicalHistory   MedicalHistory[]
-  medications      Medication[]
-  allergies        Allergy[]
-  vitalSigns       VitalSign[]
-  labResults       LabResult[]
-  imagingStudies   ImagingStudy[]
-  nihssAssessments NIHSSAssessment[]
-  consultations    Consultation[]
-  treatmentOrders  TreatmentOrder[]
-  alerts           Alert[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([mrn])
-  @@index([lastName, firstName])
-  @@index([status])
-  @@map("patients")
-}
-
-model MedicalHistory {
-  id            String   @id @default(uuid())
-  patientId     String
-  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  condition     String
-  diagnosedDate DateTime?
-  status        String   @default("ACTIVE") // ACTIVE, RESOLVED, CHRONIC
-  notes         String?
-
-  createdAt DateTime @default(now())
-
-  @@index([patientId])
-  @@map("medical_histories")
-}
-
-model Medication {
-  id           String    @id @default(uuid())
-  patientId    String
-  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  name         String
-  dosage       String
-  frequency    String
-  route        String
-  startDate    DateTime?
-  endDate      DateTime?
-  prescribedBy String?
-  isActive     Boolean   @default(true)
-
-  createdAt DateTime @default(now())
-
-  @@index([patientId])
-  @@index([isActive])
-  @@map("medications")
-}
-
-model Allergy {
-  id        String  @id @default(uuid())
-  patientId String
-  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  allergen  String
-  reaction  String
-  severity  String  // MILD, MODERATE, SEVERE, LIFE_THREATENING
-
-  createdAt DateTime @default(now())
-
-  @@index([patientId])
-  @@map("allergies")
-}
-
-// ═══════════════════════════════════════════════════════════
-// ENCOUNTER (MSU Case)
-// ═══════════════════════════════════════════════════════════
-
 enum EncounterStatus {
   ACTIVE
   PENDING_REVIEW
@@ -214,94 +70,6 @@ enum EncounterPriority {
   HIGH
   CRITICAL
 }
-
-model Encounter {
-  id                   String            @id @default(uuid())
-  patientId            String
-  patient              Patient           @relation(fields: [patientId], references: [id])
-  technicianId         String
-  technician           User              @relation("TechnicianEncounters", fields: [technicianId], references: [id])
-  neurologistId        String?
-  neurologist          User?             @relation("NeurologistEncounters", fields: [neurologistId], references: [id])
-  status               EncounterStatus   @default(ACTIVE)
-  priority             EncounterPriority @default(MEDIUM)
-  msuUnitId            String?
-  msuLocation          String?
-  dispatchTime         DateTime?
-  arrivalTime          DateTime?
-  sceneDepartureTime   DateTime?
-  hospitalArrivalTime  DateTime?
-  notes                String?
-
-  // Relations
-  vitalSigns       VitalSign[]
-  labResults       LabResult[]
-  imagingStudies   ImagingStudy[]
-  nihssAssessments NIHSSAssessment[]
-  consultations    Consultation[]
-  treatmentOrders  TreatmentOrder[]
-  alerts           Alert[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([patientId])
-  @@index([technicianId])
-  @@index([neurologistId])
-  @@index([status])
-  @@index([priority])
-  @@map("encounters")
-}
-
-// ═══════════════════════════════════════════════════════════
-// VITAL SIGNS
-// ═══════════════════════════════════════════════════════════
-
-model VitalSign {
-  id               String   @id @default(uuid())
-  encounterId      String
-  encounter        Encounter @relation(fields: [encounterId], references: [id])
-  patientId        String
-  patient          Patient  @relation(fields: [patientId], references: [id])
-  recordedById     String
-  recordedBy       User     @relation(fields: [recordedById], references: [id])
-
-  // Blood Pressure
-  systolicBP       Int?
-  diastolicBP      Int?
-
-  // Heart
-  heartRate        Int?
-  heartRhythm      String?
-
-  // Respiratory
-  respiratoryRate  Int?
-  oxygenSaturation Float?
-  supplementalO2   Boolean? @default(false)
-  o2FlowRate       Float?
-
-  // Other
-  temperature      Float?
-  temperatureUnit  String?  @default("C")
-  bloodGlucose     Float?
-  gcsScore         Int?
-
-  // Metadata
-  recordedAt       DateTime @default(now())
-  deviceSource     String?
-  notes            String?
-
-  createdAt DateTime @default(now())
-
-  @@index([encounterId])
-  @@index([patientId])
-  @@index([recordedAt])
-  @@map("vital_signs")
-}
-
-// ═══════════════════════════════════════════════════════════
-// LAB RESULTS
-// ═══════════════════════════════════════════════════════════
 
 enum LabTestType {
   CBC
@@ -320,54 +88,6 @@ enum LabResultStatus {
   COMPLETED
   CANCELLED
 }
-
-model LabResult {
-  id                  String          @id @default(uuid())
-  encounterId         String
-  encounter           Encounter       @relation(fields: [encounterId], references: [id])
-  patientId           String
-  patient             Patient         @relation(fields: [patientId], references: [id])
-  orderedById         String
-  orderedBy           User            @relation("OrderedLabs", fields: [orderedById], references: [id])
-  testType            LabTestType
-  testName            String
-  status              LabResultStatus @default(PENDING)
-  specimenCollectedAt DateTime?
-  resultedAt          DateTime?
-  isSimulated         Boolean         @default(false)
-  notes               String?
-
-  // Relations
-  resultValues LabResultValue[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([encounterId])
-  @@index([patientId])
-  @@index([testType])
-  @@index([status])
-  @@map("lab_results")
-}
-
-model LabResultValue {
-  id             String    @id @default(uuid())
-  labResultId    String
-  labResult      LabResult @relation(fields: [labResultId], references: [id], onDelete: Cascade)
-  componentName  String
-  value          String
-  unit           String
-  referenceRange String
-  isAbnormal     Boolean   @default(false)
-  isCritical     Boolean   @default(false)
-
-  @@index([labResultId])
-  @@map("lab_result_values")
-}
-
-// ═══════════════════════════════════════════════════════════
-// IMAGING STUDIES
-// ═══════════════════════════════════════════════════════════
 
 enum ImagingType {
   CT_HEAD
@@ -388,85 +108,6 @@ enum ImagingStatus {
   CANCELLED
 }
 
-model ImagingStudy {
-  id               String        @id @default(uuid())
-  encounterId      String
-  encounter        Encounter     @relation(fields: [encounterId], references: [id])
-  patientId        String
-  patient          Patient       @relation(fields: [patientId], references: [id])
-  orderedById      String
-  orderedBy        User          @relation("OrderedImaging", fields: [orderedById], references: [id])
-  interpretedById  String?
-  interpretedBy    User?         @relation("InterpretedImaging", fields: [interpretedById], references: [id])
-  imagingType      ImagingType
-  status           ImagingStatus @default(ORDERED)
-  studyDescription String?
-  findings         String?
-  impression       String?
-  imageUrls        String[]      @default([])
-  thumbnailUrl     String?
-  dicomStudyUid    String?
-  performedAt      DateTime?
-  reportedAt       DateTime?
-  isCritical       Boolean       @default(false)
-  notes            String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([encounterId])
-  @@index([patientId])
-  @@index([imagingType])
-  @@index([status])
-  @@map("imaging_studies")
-}
-
-// ═══════════════════════════════════════════════════════════
-// NIHSS ASSESSMENT
-// ═══════════════════════════════════════════════════════════
-
-model NIHSSAssessment {
-  id                     String    @id @default(uuid())
-  encounterId            String
-  encounter              Encounter @relation(fields: [encounterId], references: [id])
-  patientId              String
-  patient                Patient   @relation(fields: [patientId], references: [id])
-  assessedById           String
-  assessedBy             User      @relation(fields: [assessedById], references: [id])
-  totalScore             Int
-
-  // Individual NIHSS components
-  levelOfConsciousness   Int       // 1a: 0-3
-  locQuestions           Int       // 1b: 0-2
-  locCommands            Int       // 1c: 0-2
-  bestGaze               Int       // 2: 0-2
-  visualFields           Int       // 3: 0-3
-  facialPalsy            Int       // 4: 0-3
-  motorLeftArm           Int       // 5a: 0-4
-  motorRightArm          Int       // 5b: 0-4
-  motorLeftLeg           Int       // 6a: 0-4
-  motorRightLeg          Int       // 6b: 0-4
-  limbAtaxia             Int       // 7: 0-2
-  sensory                Int       // 8: 0-2
-  bestLanguage           Int       // 9: 0-3
-  dysarthria             Int       // 10: 0-2
-  extinctionInattention  Int       // 11: 0-2
-
-  assessedAt DateTime @default(now())
-  notes      String?
-
-  createdAt DateTime @default(now())
-
-  @@index([encounterId])
-  @@index([patientId])
-  @@index([assessedAt])
-  @@map("nihss_assessments")
-}
-
-// ═══════════════════════════════════════════════════════════
-// CONSULTATION
-// ═══════════════════════════════════════════════════════════
-
 enum ConsultationStatus {
   REQUESTED
   ACCEPTED
@@ -474,45 +115,6 @@ enum ConsultationStatus {
   COMPLETED
   CANCELLED
 }
-
-model Consultation {
-  id                 String             @id @default(uuid())
-  encounterId        String
-  encounter          Encounter          @relation(fields: [encounterId], references: [id])
-  patientId          String
-  patient            Patient            @relation(fields: [patientId], references: [id])
-  neurologistId      String
-  neurologist        User               @relation("NeurologistConsultations", fields: [neurologistId], references: [id])
-  technicianId       String
-  technician         User               @relation("TechnicianConsultations", fields: [technicianId], references: [id])
-  status             ConsultationStatus @default(REQUESTED)
-  requestedAt        DateTime           @default(now())
-  acceptedAt         DateTime?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  clinicalImpression String?
-  recommendations    String?
-  diagnosis          String?
-  diagnosisCode      String?            // ICD-10
-
-  // Relations
-  treatmentOrders TreatmentOrder[]
-  messages        Message[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([encounterId])
-  @@index([patientId])
-  @@index([neurologistId])
-  @@index([technicianId])
-  @@index([status])
-  @@map("consultations")
-}
-
-// ═══════════════════════════════════════════════════════════
-// TREATMENT ORDERS
-// ═══════════════════════════════════════════════════════════
 
 enum OrderType {
   MEDICATION
@@ -540,83 +142,12 @@ enum OrderPriority {
   EMERGENCY
 }
 
-model TreatmentOrder {
-  id                  String        @id @default(uuid())
-  consultationId      String
-  consultation        Consultation  @relation(fields: [consultationId], references: [id])
-  encounterId         String
-  encounter           Encounter     @relation(fields: [encounterId], references: [id])
-  patientId           String
-  patient             Patient       @relation(fields: [patientId], references: [id])
-  orderedById         String
-  orderedBy           User          @relation("OrderedTreatments", fields: [orderedById], references: [id])
-  orderType           OrderType
-  status              OrderStatus   @default(PENDING)
-  priority            OrderPriority @default(ROUTINE)
-  orderDescription    String
-
-  // Medication-specific
-  medicationName      String?
-  dosage              String?
-  route               String?
-  frequency           String?
-  duration            String?
-
-  // Transfer-specific
-  transferDestination String?
-  transferUnit        String?
-
-  executedById        String?
-  executedBy          User?         @relation("ExecutedTreatments", fields: [executedById], references: [id])
-  executedAt          DateTime?
-  notes               String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([consultationId])
-  @@index([encounterId])
-  @@index([patientId])
-  @@index([orderType])
-  @@index([status])
-  @@map("treatment_orders")
-}
-
-// ═══════════════════════════════════════════════════════════
-// MESSAGES
-// ═══════════════════════════════════════════════════════════
-
 enum MessageType {
   TEXT
   AUDIO
   IMAGE
   SYSTEM
 }
-
-model Message {
-  id              String       @id @default(uuid())
-  consultationId  String
-  consultation    Consultation @relation(fields: [consultationId], references: [id])
-  senderId        String
-  sender          User         @relation(fields: [senderId], references: [id])
-  messageType     MessageType  @default(TEXT)
-  content         String
-  audioUrl        String?
-  imageUrl        String?
-  isRead          Boolean      @default(false)
-  readAt          DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([consultationId])
-  @@index([senderId])
-  @@index([createdAt])
-  @@map("messages")
-}
-
-// ═══════════════════════════════════════════════════════════
-// ALERTS
-// ═══════════════════════════════════════════════════════════
 
 enum AlertType {
   CRITICAL_VITAL
@@ -642,40 +173,6 @@ enum AlertStatus {
   RESOLVED
   EXPIRED
 }
-
-model Alert {
-  id             String        @id @default(uuid())
-  encounterId    String?
-  encounter      Encounter?    @relation(fields: [encounterId], references: [id])
-  patientId      String?
-  patient        Patient?      @relation(fields: [patientId], references: [id])
-  recipientId    String
-  recipient      User          @relation("ReceivedAlerts", fields: [recipientId], references: [id])
-  senderId       String?
-  sender         User?         @relation("SentAlerts", fields: [senderId], references: [id])
-  alertType      AlertType
-  severity       AlertSeverity
-  status         AlertStatus   @default(ACTIVE)
-  title          String
-  message        String
-  metadata       Json?
-  acknowledgedAt DateTime?
-  resolvedAt     DateTime?
-  expiresAt      DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([recipientId])
-  @@index([status])
-  @@index([severity])
-  @@index([alertType])
-  @@index([createdAt])
-  @@map("alerts")
-}
-
-// ═══════════════════════════════════════════════════════════
-// AUDIT LOG (HIPAA Compliance)
-// ═══════════════════════════════════════════════════════════
 
 enum AuditAction {
   CREATE
@@ -707,26 +204,544 @@ enum AuditResource {
   AUTH
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// USER & AUTHENTICATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model User {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String     @unique @db.Text   /// PHI — encrypted at rest
+  passwordHash    String     @db.Text
+  firstName       String     @db.Text            /// PHI — encrypted at rest
+  lastName        String     @db.Text            /// PHI — encrypted at rest
+  role            UserRole
+  status          UserStatus @default(ACTIVE)
+  phoneNumber     String?    @db.Text            /// PHI — encrypted at rest
+  licenseNumber   String?
+  specialization  String?
+  profileImageUrl String?
+  lastLoginAt     DateTime?  @db.Timestamptz(3)
+
+  // Relations
+  technicianEncounters  Encounter[]      @relation("TechnicianEncounters")
+  neurologistEncounters Encounter[]      @relation("NeurologistEncounters")
+  consultationsAsNeuro  Consultation[]   @relation("NeurologistConsultations")
+  consultationsAsTech   Consultation[]   @relation("TechnicianConsultations")
+  recordedVitals        VitalSign[]
+  orderedLabs           LabResult[]      @relation("OrderedLabs")
+  orderedImaging        ImagingStudy[]   @relation("OrderedImaging")
+  interpretedImaging    ImagingStudy[]   @relation("InterpretedImaging")
+  nihssAssessments      NIHSSAssessment[]
+  orderedTreatments     TreatmentOrder[] @relation("OrderedTreatments")
+  executedTreatments    TreatmentOrder[] @relation("ExecutedTreatments")
+  sentMessages          Message[]
+  receivedAlerts        Alert[]          @relation("ReceivedAlerts")
+  sentAlerts            Alert[]          @relation("SentAlerts")
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([email])
+  @@index([role, status])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String    @unique @db.Text
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  ipAddress String?   @db.Inet
+  userAgent String?   @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([token])
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PATIENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Patient {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mrn                   String        @unique           /// PHI — Medical Record Number
+  firstName             String        @db.Text          /// PHI — encrypted at rest
+  lastName              String        @db.Text          /// PHI — encrypted at rest
+  dateOfBirth           DateTime      @db.Date          /// PHI — encrypted at rest
+  gender                Gender
+  age                   Int           @db.SmallInt
+  phoneNumber           String?       @db.Text          /// PHI — encrypted at rest
+  emergencyContactName  String?       @db.Text          /// PHI — encrypted at rest
+  emergencyContactPhone String?       @db.Text          /// PHI — encrypted at rest
+  address               String?       @db.Text          /// PHI — encrypted at rest
+  insuranceProvider     String?       @db.Text          /// PHI — encrypted at rest
+  insurancePolicyNumber String?       @db.Text          /// PHI — encrypted at rest
+  status                PatientStatus @default(INTAKE)
+  chiefComplaint        String?       @db.Text
+  symptomOnsetTime      DateTime?     @db.Timestamptz(3)
+  lastKnownWellTime     DateTime?     @db.Timestamptz(3)
+
+  // Relations
+  encounters       Encounter[]
+  medicalHistory   MedicalHistory[]
+  medications      Medication[]
+  allergies        Allergy[]
+  vitalSigns       VitalSign[]
+  labResults       LabResult[]
+  imagingStudies   ImagingStudy[]
+  nihssAssessments NIHSSAssessment[]
+  consultations    Consultation[]
+  treatmentOrders  TreatmentOrder[]
+  alerts           Alert[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([mrn])
+  @@index([lastName, firstName])
+  @@index([status])
+  @@index([symptomOnsetTime])
+  @@map("patients")
+}
+
+model MedicalHistory {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String    @db.Uuid
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  condition     String    @db.Text
+  diagnosedDate DateTime? @db.Date
+  status        String    @default("ACTIVE") @db.VarChar(20)
+  notes         String?   @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([patientId])
+  @@map("medical_histories")
+}
+
+model Medication {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId    String    @db.Uuid
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name         String    @db.Text
+  dosage       String    @db.VarChar(100)
+  frequency    String    @db.VarChar(50)
+  route        String    @db.VarChar(20)
+  startDate    DateTime? @db.Date
+  endDate      DateTime? @db.Date
+  prescribedBy String?   @db.Text
+  isActive     Boolean   @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([patientId, isActive])
+  @@map("medications")
+}
+
+model Allergy {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId String @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  allergen  String @db.Text
+  reaction  String @db.Text
+  severity  String @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([patientId])
+  @@map("allergies")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENCOUNTER (MSU Case)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Encounter {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId           String            @db.Uuid
+  patient             Patient           @relation(fields: [patientId], references: [id])
+  technicianId        String            @db.Uuid
+  technician          User              @relation("TechnicianEncounters", fields: [technicianId], references: [id])
+  neurologistId       String?           @db.Uuid
+  neurologist         User?             @relation("NeurologistEncounters", fields: [neurologistId], references: [id])
+  status              EncounterStatus   @default(ACTIVE)
+  priority            EncounterPriority @default(MEDIUM)
+  msuUnitId           String?           @db.VarChar(20)
+  msuLocation         String?           @db.VarChar(100)
+  dispatchTime        DateTime?         @db.Timestamptz(3)
+  arrivalTime         DateTime?         @db.Timestamptz(3)
+  sceneDepartureTime  DateTime?         @db.Timestamptz(3)
+  hospitalArrivalTime DateTime?         @db.Timestamptz(3)
+  notes               String?           @db.Text
+
+  // Relations
+  vitalSigns       VitalSign[]
+  labResults       LabResult[]
+  imagingStudies   ImagingStudy[]
+  nihssAssessments NIHSSAssessment[]
+  consultations    Consultation[]
+  treatmentOrders  TreatmentOrder[]
+  alerts           Alert[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([patientId])
+  @@index([technicianId])
+  @@index([neurologistId])
+  @@index([status, priority])
+  @@index([createdAt])
+  @@map("encounters")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VITAL SIGNS — structured columns + JSONB details for extensibility
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model VitalSign {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encounterId      String    @db.Uuid
+  encounter        Encounter @relation(fields: [encounterId], references: [id])
+  patientId        String    @db.Uuid
+  patient          Patient   @relation(fields: [patientId], references: [id])
+  recordedById     String    @db.Uuid
+  recordedBy       User      @relation(fields: [recordedById], references: [id])
+
+  // Core structured vitals
+  systolicBP       Int?      @db.SmallInt
+  diastolicBP      Int?      @db.SmallInt
+  heartRate        Int?      @db.SmallInt
+  heartRhythm      String?   @db.VarChar(80)
+  respiratoryRate  Int?      @db.SmallInt
+  oxygenSaturation Float?    @db.Real
+  supplementalO2   Boolean   @default(false)
+  o2FlowRate       Float?    @db.Real
+  temperature      Float?    @db.Real
+  temperatureUnit  String    @default("C") @db.VarChar(1)
+  bloodGlucose     Float?    @db.Real
+  gcsScore         Int?      @db.SmallInt
+
+  /// JSONB for additional/flexible vitals: pupil reactivity, pain scale, EtCO2, etc.
+  details          Json?     @db.JsonB
+
+  // Metadata
+  recordedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  deviceSource     String?   @db.VarChar(100)
+  notes            String?   @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([encounterId, recordedAt])
+  @@index([patientId, recordedAt])
+  @@map("vital_signs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAB RESULTS — structured + JSONB for flexible result values
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model LabResult {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encounterId         String          @db.Uuid
+  encounter           Encounter       @relation(fields: [encounterId], references: [id])
+  patientId           String          @db.Uuid
+  patient             Patient         @relation(fields: [patientId], references: [id])
+  orderedById         String          @db.Uuid
+  orderedBy           User            @relation("OrderedLabs", fields: [orderedById], references: [id])
+  testType            LabTestType
+  testName            String          @db.VarChar(150)
+  status              LabResultStatus @default(PENDING)
+  specimenCollectedAt DateTime?       @db.Timestamptz(3)
+  resultedAt          DateTime?       @db.Timestamptz(3)
+  isSimulated         Boolean         @default(false)
+  notes               String?         @db.Text
+
+  /// JSONB for flexible results: array of { componentName, value, unit, referenceRange, isAbnormal, isCritical }
+  results             Json?           @db.JsonB
+
+  // Relations (keep relational model too for complex queries)
+  resultValues LabResultValue[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([encounterId])
+  @@index([patientId])
+  @@index([testType, status])
+  @@map("lab_results")
+}
+
+model LabResultValue {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  labResultId    String    @db.Uuid
+  labResult      LabResult @relation(fields: [labResultId], references: [id], onDelete: Cascade)
+  componentName  String    @db.VarChar(100)
+  value          String    @db.VarChar(50)
+  unit           String    @db.VarChar(30)
+  referenceRange String    @db.VarChar(50)
+  isAbnormal     Boolean   @default(false)
+  isCritical     Boolean   @default(false)
+
+  @@index([labResultId])
+  @@map("lab_result_values")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMAGING STUDIES — structured + JSONB for DICOM metadata & measurements
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model ImagingStudy {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encounterId      String        @db.Uuid
+  encounter        Encounter     @relation(fields: [encounterId], references: [id])
+  patientId        String        @db.Uuid
+  patient          Patient       @relation(fields: [patientId], references: [id])
+  orderedById      String        @db.Uuid
+  orderedBy        User          @relation("OrderedImaging", fields: [orderedById], references: [id])
+  interpretedById  String?       @db.Uuid
+  interpretedBy    User?         @relation("InterpretedImaging", fields: [interpretedById], references: [id])
+  imagingType      ImagingType
+  status           ImagingStatus @default(ORDERED)
+  studyDescription String?       @db.Text
+  findings         String?       @db.Text
+  impression       String?       @db.Text
+  imageUrls        String[]      @default([])
+  thumbnailUrl     String?
+  dicomStudyUid    String?       @db.VarChar(128)
+  performedAt      DateTime?     @db.Timestamptz(3)
+  reportedAt       DateTime?     @db.Timestamptz(3)
+  isCritical       Boolean       @default(false)
+  notes            String?       @db.Text
+
+  /// JSONB for DICOM metadata, ASPECTS score, measurements, annotations
+  details          Json?         @db.JsonB
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([encounterId])
+  @@index([patientId])
+  @@index([imagingType, status])
+  @@index([isCritical])
+  @@map("imaging_studies")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NIHSS ASSESSMENT — structured components + JSONB for extended details
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model NIHSSAssessment {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encounterId            String    @db.Uuid
+  encounter              Encounter @relation(fields: [encounterId], references: [id])
+  patientId              String    @db.Uuid
+  patient                Patient   @relation(fields: [patientId], references: [id])
+  assessedById           String    @db.Uuid
+  assessedBy             User      @relation(fields: [assessedById], references: [id])
+  totalScore             Int       @db.SmallInt
+
+  // Individual NIHSS components (0-4 scale varies per item)
+  levelOfConsciousness   Int       @db.SmallInt  // 1a: 0-3
+  locQuestions           Int       @db.SmallInt  // 1b: 0-2
+  locCommands            Int       @db.SmallInt  // 1c: 0-2
+  bestGaze               Int       @db.SmallInt  // 2: 0-2
+  visualFields           Int       @db.SmallInt  // 3: 0-3
+  facialPalsy            Int       @db.SmallInt  // 4: 0-3
+  motorLeftArm           Int       @db.SmallInt  // 5a: 0-4
+  motorRightArm          Int       @db.SmallInt  // 5b: 0-4
+  motorLeftLeg           Int       @db.SmallInt  // 6a: 0-4
+  motorRightLeg          Int       @db.SmallInt  // 6b: 0-4
+  limbAtaxia             Int       @db.SmallInt  // 7: 0-2
+  sensory                Int       @db.SmallInt  // 8: 0-2
+  bestLanguage           Int       @db.SmallInt  // 9: 0-3
+  dysarthria             Int       @db.SmallInt  // 10: 0-2
+  extinctionInattention  Int       @db.SmallInt  // 11: 0-2
+
+  /// JSONB for per-item clinical observations, laterality notes, video timestamps
+  details                Json?     @db.JsonB
+
+  assessedAt DateTime @default(now()) @db.Timestamptz(3)
+  notes      String?  @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([encounterId, assessedAt])
+  @@index([patientId, assessedAt])
+  @@index([totalScore])
+  @@map("nihss_assessments")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONSULTATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Consultation {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encounterId        String             @db.Uuid
+  encounter          Encounter          @relation(fields: [encounterId], references: [id])
+  patientId          String             @db.Uuid
+  patient            Patient            @relation(fields: [patientId], references: [id])
+  neurologistId      String             @db.Uuid
+  neurologist        User               @relation("NeurologistConsultations", fields: [neurologistId], references: [id])
+  technicianId       String             @db.Uuid
+  technician         User               @relation("TechnicianConsultations", fields: [technicianId], references: [id])
+  status             ConsultationStatus @default(REQUESTED)
+  requestedAt        DateTime           @default(now()) @db.Timestamptz(3)
+  acceptedAt         DateTime?          @db.Timestamptz(3)
+  startedAt          DateTime?          @db.Timestamptz(3)
+  completedAt        DateTime?          @db.Timestamptz(3)
+  clinicalImpression String?            @db.Text
+  recommendations    String?            @db.Text
+  diagnosis          String?            @db.Text
+  diagnosisCode      String?            @db.VarChar(20)  // ICD-10
+
+  // Relations
+  treatmentOrders TreatmentOrder[]
+  messages        Message[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([encounterId])
+  @@index([patientId])
+  @@index([neurologistId, status])
+  @@index([technicianId])
+  @@map("consultations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TREATMENT ORDERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model TreatmentOrder {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consultationId      String        @db.Uuid
+  consultation        Consultation  @relation(fields: [consultationId], references: [id])
+  encounterId         String        @db.Uuid
+  encounter           Encounter     @relation(fields: [encounterId], references: [id])
+  patientId           String        @db.Uuid
+  patient             Patient       @relation(fields: [patientId], references: [id])
+  orderedById         String        @db.Uuid
+  orderedBy           User          @relation("OrderedTreatments", fields: [orderedById], references: [id])
+  orderType           OrderType
+  status              OrderStatus   @default(PENDING)
+  priority            OrderPriority @default(ROUTINE)
+  orderDescription    String        @db.Text
+
+  // Medication-specific
+  medicationName      String?       @db.VarChar(200)
+  dosage              String?       @db.Text
+  route               String?       @db.VarChar(20)
+  frequency           String?       @db.VarChar(50)
+  duration            String?       @db.VarChar(50)
+
+  // Transfer-specific
+  transferDestination String?       @db.VarChar(200)
+  transferUnit        String?       @db.VarChar(100)
+
+  executedById        String?       @db.Uuid
+  executedBy          User?         @relation("ExecutedTreatments", fields: [executedById], references: [id])
+  executedAt          DateTime?     @db.Timestamptz(3)
+  notes               String?       @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(3)
+
+  @@index([consultationId])
+  @@index([encounterId])
+  @@index([patientId])
+  @@index([orderType, status])
+  @@map("treatment_orders")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MESSAGES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Message {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consultationId  String       @db.Uuid
+  consultation    Consultation @relation(fields: [consultationId], references: [id])
+  senderId        String       @db.Uuid
+  sender          User         @relation(fields: [senderId], references: [id])
+  messageType     MessageType  @default(TEXT)
+  content         String       @db.Text       /// PHI — encrypted at rest
+  audioUrl        String?
+  imageUrl        String?
+  isRead          Boolean      @default(false)
+  readAt          DateTime?    @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([consultationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Alert {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  encounterId    String?       @db.Uuid
+  encounter      Encounter?    @relation(fields: [encounterId], references: [id])
+  patientId      String?       @db.Uuid
+  patient        Patient?      @relation(fields: [patientId], references: [id])
+  recipientId    String        @db.Uuid
+  recipient      User          @relation("ReceivedAlerts", fields: [recipientId], references: [id])
+  senderId       String?       @db.Uuid
+  sender         User?         @relation("SentAlerts", fields: [senderId], references: [id])
+  alertType      AlertType
+  severity       AlertSeverity
+  status         AlertStatus   @default(ACTIVE)
+  title          String        @db.VarChar(200)
+  message        String        @db.Text
+  metadata       Json?         @db.JsonB
+  acknowledgedAt DateTime?     @db.Timestamptz(3)
+  resolvedAt     DateTime?     @db.Timestamptz(3)
+  expiresAt      DateTime?     @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([recipientId, status])
+  @@index([severity, status])
+  @@index([alertType])
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUDIT LOG — HIPAA Compliance (append-only, never update/delete)
+// ═══════════════════════════════════════════════════════════════════════════════
+
 model AuditLog {
-  id          String        @id @default(uuid())
-  userId      String?
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?       @db.Uuid
   user        User?         @relation(fields: [userId], references: [id])
   action      AuditAction
   resource    AuditResource
-  resourceId  String?
-  ipAddress   String?
-  userAgent   String?
-  oldValues   Json?
-  newValues   Json?
+  resourceId  String?       @db.Uuid
+  ipAddress   String?       @db.Inet
+  userAgent   String?       @db.Text
+  oldValues   Json?         @db.JsonB
+  newValues   Json?         @db.JsonB
   phiAccessed Boolean       @default(false)
-  description String?
+  description String?       @db.Text
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([userId])
-  @@index([action])
-  @@index([resource])
-  @@index([phiAccessed])
+  @@index([action, resource])
+  @@index([phiAccessed, createdAt])
+  @@index([resourceId])
   @@index([createdAt])
   @@map("audit_logs")
 }

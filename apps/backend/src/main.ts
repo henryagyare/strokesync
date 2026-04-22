@@ -3,6 +3,9 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { RedisIoAdapter } from './modules/socket/redis.adapter';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
+import { AuditService } from './modules/audit/audit.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -11,6 +14,12 @@ async function bootstrap() {
 
   // ─── Security ────────────────────────────────────────────
   app.use(helmet());
+
+  // ─── Redis & WebSockets ──────────────────────────────────
+  const redisAdapter = new RedisIoAdapter(app);
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  await redisAdapter.connectToRedis(redisUrl);
+  app.useWebSocketAdapter(redisAdapter);
   
   // ─── CORS ────────────────────────────────────────────────
   app.enableCors({
@@ -34,6 +43,10 @@ async function bootstrap() {
 
   // ─── API Prefix ──────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
+
+  // ─── Global Auditing ─────────────────────────────────────
+  const auditService = app.get(AuditService);
+  app.useGlobalInterceptors(new AuditInterceptor(auditService));
 
   // ─── Swagger Documentation ───────────────────────────────
   const swaggerConfig = new DocumentBuilder()

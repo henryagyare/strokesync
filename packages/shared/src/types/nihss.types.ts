@@ -1,5 +1,36 @@
 // ─── NIHSS (National Institutes of Health Stroke Scale) ───
 
+/**
+ * JSONB `details` field — per-item clinical observations, laterality, video references.
+ * Stored as PostgreSQL JSONB, indexed with GIN.
+ */
+export interface NIHSSDetails {
+  laterality?: string;              // e.g. 'Left-sided deficits → Right hemisphere'
+  dominantHand?: 'Right' | 'Left' | 'Ambidextrous';
+  eyeDeviation?: string;
+  tongueDeviation?: string;
+  pronatorDrift?: string;
+  neglect?: string;
+  speechOutput?: string;
+  comprehension?: string;
+  readingDifficulty?: boolean;
+
+  // GCS breakdown (if recorded)
+  gcsBreakdown?: {
+    eye: number;
+    verbal: number;
+    motor: number;
+  };
+
+  // tPA eligibility
+  tpaContraindication?: string;
+  toxicologyNote?: string;
+  headacheCharacter?: string;
+
+  // Open-ended
+  [key: string]: unknown;
+}
+
 export interface NIHSSAssessment {
   id: string;
   encounterId: string;
@@ -24,6 +55,9 @@ export interface NIHSSAssessment {
   dysarthria: number;           // 10: 0-2
   extinctionInattention: number; // 11: 0-2
 
+  // JSONB details
+  details?: NIHSSDetails;
+
   assessedAt: Date;
   notes?: string;
   createdAt: Date;
@@ -47,8 +81,11 @@ export interface CreateNIHSSAssessmentDto {
   bestLanguage: number;
   dysarthria: number;
   extinctionInattention: number;
+  details?: NIHSSDetails;
   notes?: string;
 }
+
+// ─── NIHSS Severity Classification ────────────────────────
 
 export const NIHSS_SEVERITY = {
   NONE: { min: 0, max: 0, label: 'No Stroke Symptoms' },
